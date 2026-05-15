@@ -18,7 +18,8 @@ async function bootstrap() {
       // Allow requests with no origin (Postman, curl, mobile apps)
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) return callback(null, true);
-      callback(new Error(`CORS: origin ${origin} not allowed`));
+      // Return false (block) instead of throwing — avoids 500 error
+      callback(null, false);
     },
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
