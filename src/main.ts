@@ -11,14 +11,14 @@ async function bootstrap() {
 
   const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:8081')
     .split(',')
-    .map((u) => u.trim());
+    .map((u) => u.trim().replace(/\/$/, '')); // remove trailing slash
 
   app.enableCors({
     origin: (origin, callback) => {
       // Allow requests with no origin (Postman, curl, mobile apps)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      // Return false (block) instead of throwing — avoids 500 error
+      const normalised = origin.replace(/\/$/, '');
+      if (allowedOrigins.includes(normalised)) return callback(null, true);
       callback(null, false);
     },
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
