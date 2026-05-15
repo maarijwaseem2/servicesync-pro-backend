@@ -33,6 +33,9 @@ import { AuthModule } from './auth/auth.module';
             username: process.env.DB_USER || 'postgres',
             password: process.env.DB_PASS || '123456',
             database: process.env.DB_NAME || 'servicesync',
+            ssl: process.env.DB_HOST && process.env.DB_HOST !== 'localhost'
+              ? { rejectUnauthorized: false }
+              : false,
             entities: [User, ServiceEntity, Booking, Category],
             migrations: [__dirname + '/migrations/*{.ts,.js}'],
             migrationsRun: true,
