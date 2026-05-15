@@ -42,6 +42,12 @@ export class Booking {
   @Column('text', { nullable: true })
   specialInstructions: string;
 
+  @Column('int', { nullable: true })
+  rating: number;
+
+  @Column('text', { nullable: true })
+  reviewText: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

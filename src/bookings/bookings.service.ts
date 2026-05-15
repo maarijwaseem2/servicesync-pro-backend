@@ -20,6 +20,13 @@ export class BookingsService {
     return this.bookingRepository.find(options);
   }
 
+  async findOne(id: string): Promise<Booking | null> {
+    return this.bookingRepository.findOne({
+      where: { id },
+      relations: ['customer', 'provider', 'service'],
+    });
+  }
+
   async create(createBookingDto: any, customerId: string): Promise<Booking> {
     const booking = this.bookingRepository.create({
       ...createBookingDto,
@@ -32,6 +39,11 @@ export class BookingsService {
 
   async updateStatus(id: string, updateDto: any): Promise<Booking | null> {
     await this.bookingRepository.update(id, updateDto);
-    return this.bookingRepository.findOne({ where: { id }, relations: ['customer', 'provider', 'service'] });
+    return this.findOne(id);
+  }
+
+  async submitReview(id: string, rating: number, reviewText: string): Promise<Booking | null> {
+    await this.bookingRepository.update(id, { rating, reviewText });
+    return this.findOne(id);
   }
 }

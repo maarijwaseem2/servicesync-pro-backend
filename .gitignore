@@ -49,8 +49,10 @@ Thumbs.db
 *.wmv
 
 # ENV
-.env*
+.env
 
 #state_sess
 state_sess_*
 .vscode/*
+
+uploads/
