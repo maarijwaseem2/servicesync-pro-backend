@@ -21,7 +21,7 @@ export class CategoriesController {
 
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.ADMIN)
+  @Roles(Role.ADMIN, Role.PROVIDER)
   create(@Body() data: any) {
     return this.categoriesService.create(data);
   }
