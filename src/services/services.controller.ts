@@ -75,8 +75,8 @@ export class ServicesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(Role.ADMIN, Role.PROVIDER)
   @Patch(':id')
-  update(@Param('id') id: string, @Body() updateServiceDto: any) {
-    return this.servicesService.update(id, updateServiceDto);
+  update(@Param('id') id: string, @Body() updateServiceDto: any, @Request() req: any) {
+    return this.servicesService.update(id, updateServiceDto, req.user);
   }
 
   /** Admin: approve a pending service */

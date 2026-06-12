@@ -39,6 +39,15 @@ export class Booking {
   @Column('decimal', { precision: 10, scale: 2, nullable: true })
   totalAmount: number;
 
+  @Column({ nullable: true })
+  address: string;
+
+  @Column({ nullable: true })
+  city: string;
+
+  @Column({ nullable: true })
+  phone: string;
+
   @Column('text', { nullable: true })
   specialInstructions: string;
 
@@ -47,6 +56,9 @@ export class Booking {
 
   @Column('text', { nullable: true })
   reviewText: string;
+
+  @Column({ default: false })
+  reviewHidden: boolean;
 
   @CreateDateColumn()
   createdAt: Date;

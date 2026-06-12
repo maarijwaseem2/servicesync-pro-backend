@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, UseGuards, Request, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Delete, Param, UseGuards, Request, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -44,5 +44,20 @@ export class BookingsController {
     if (!booking) throw new NotFoundException();
     if (booking.customer?.id !== req.user.id) throw new ForbiddenException();
     return this.bookingsService.submitReview(id, dto.rating, dto.reviewText);
+  }
+
+  /** Admin: hide or unhide a customer review */
+  @Roles(Role.ADMIN)
+  @Patch(':id/review/visibility')
+  setReviewVisibility(@Param('id') id: string, @Body() dto: { hidden: boolean }) {
+    return this.bookingsService.setReviewVisibility(id, !!dto.hidden);
+  }
+
+  /** Admin: delete a booking */
+  @Roles(Role.ADMIN)
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    await this.bookingsService.remove(id);
+    return { deleted: true };
   }
 }

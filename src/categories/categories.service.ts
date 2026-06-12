@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Category } from './entities/category.entity';
@@ -41,5 +41,21 @@ export class CategoriesService implements OnModuleInit {
   async create(data: Partial<Category>) {
     const category = this.categoryRepository.create(data);
     return this.categoryRepository.save(category);
+  }
+
+  async update(id: string, data: Partial<Category>) {
+    const category = await this.categoryRepository.findOne({ where: { id } });
+    if (!category) throw new NotFoundException('Category not found');
+    const { id: _id, services: _services, ...safe } = data as any;
+    await this.categoryRepository.update(id, safe);
+    return this.findOne(id);
+  }
+
+  async remove(id: string) {
+    const category = await this.categoryRepository.findOne({ where: { id } });
+    if (!category) throw new NotFoundException('Category not found');
+    // FK is ON DELETE SET NULL, so linked services become uncategorized
+    await this.categoryRepository.delete(id);
+    return { deleted: true };
   }
 }

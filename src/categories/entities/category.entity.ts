@@ -15,6 +15,9 @@ export class Category {
   @Column({ nullable: true })
   color: string;
 
+  @Column({ default: true })
+  isActive: boolean;
+
   @OneToMany(() => ServiceEntity, (service) => service.category)
   services: ServiceEntity[];
 }

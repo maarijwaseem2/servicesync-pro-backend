@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { UsersService } from '../users/users.service';
+import { UsersService, capitalizeName } from '../users/users.service';
+import { ProviderStatus } from '../users/entities/user.entity';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 
@@ -24,7 +25,14 @@ export class AuthService {
     if (existing) throw new UnauthorizedException('Email already exists');
     if (role === 'ADMIN') throw new UnauthorizedException('Cannot register as Admin');
     const passwordHash = await bcrypt.hash(pass, 10);
-    const user = await this.usersService.create({ email, passwordHash, role: role as any, name });
+    const user = await this.usersService.create({
+      email,
+      passwordHash,
+      role: role as any,
+      name: capitalizeName(name),
+      // New providers must be approved by an admin before their services go live
+      providerStatus: role === 'PROVIDER' ? ProviderStatus.PENDING : undefined,
+    });
     const payload = { sub: user.id, email: user.email, role: user.role, name: user.name };
     return { access_token: await this.jwtService.signAsync(payload) };
   }

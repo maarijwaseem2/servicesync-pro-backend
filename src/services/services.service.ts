@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit, ForbiddenException, NotFoundException
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ServiceEntity } from './entities/service.entity';
-import { User, Role } from '../users/entities/user.entity';
+import { User, Role, ProviderStatus } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
 
 @Injectable()
@@ -39,40 +39,83 @@ export class ServicesService implements OnModuleInit {
     this.logger.log('Sample services seeded.');
   }
 
-  /** Public: only active services */
+  /** Never expose password hashes through the joined provider relation */
+  private sanitize<T extends ServiceEntity | null>(service: T): T {
+    if (service?.provider) delete (service.provider as any).passwordHash;
+    return service;
+  }
+
+  /** Public: only active services from approved (or admin-created) providers */
   async findAll(): Promise<ServiceEntity[]> {
-    return this.serviceRepository.find({
-      where: { status: 'active' },
-      relations: ['provider', 'category'],
-    });
+    const services = await this.serviceRepository
+      .createQueryBuilder('service')
+      .leftJoinAndSelect('service.provider', 'provider')
+      .leftJoinAndSelect('service.category', 'category')
+      .where('service.status = :status', { status: 'active' })
+      .andWhere(
+        '(provider.id IS NULL OR provider.role = :adminRole OR provider.providerStatus = :approved)',
+        { adminRole: Role.ADMIN, approved: ProviderStatus.APPROVED },
+      )
+      .getMany();
+    return services.map((s) => this.sanitize(s));
   }
 
   /** Admin: all services regardless of status */
   async findAllAdmin(): Promise<ServiceEntity[]> {
-    return this.serviceRepository.find({ relations: ['provider', 'category'] });
+    const services = await this.serviceRepository.find({ relations: ['provider', 'category'] });
+    return services.map((s) => this.sanitize(s));
   }
 
   /** Provider: their own services (all statuses) */
   async findByProvider(providerId: string): Promise<ServiceEntity[]> {
-    return this.serviceRepository.find({
+    const services = await this.serviceRepository.find({
       where: { provider: { id: providerId } },
       relations: ['provider', 'category'],
     });
+    return services.map((s) => this.sanitize(s));
   }
 
   async findOne(id: string): Promise<ServiceEntity | null> {
-    return this.serviceRepository.findOne({ where: { id }, relations: ['provider', 'category'] });
+    const service = await this.serviceRepository.findOne({
+      where: { id },
+      relations: ['provider', 'category'],
+    });
+    return this.sanitize(service);
   }
 
   /** When a PROVIDER creates a service it starts as 'pending'; ADMIN creations are active immediately */
   async create(createServiceDto: any, creator: User): Promise<ServiceEntity> {
+    if (creator.role === Role.PROVIDER) {
+      const dbUser = await this.usersService.findOne(creator.id);
+      if (dbUser?.providerStatus !== ProviderStatus.APPROVED) {
+        throw new ForbiddenException(
+          'Your provider account is awaiting admin approval. You can add services once approved.',
+        );
+      }
+    }
     const status = creator.role === Role.ADMIN ? 'active' : 'pending';
-    const service = this.serviceRepository.create({ ...createServiceDto, provider: creator, status });
+    const { categoryId, ...rest } = createServiceDto;
+    const service = this.serviceRepository.create({
+      ...rest,
+      ...(categoryId ? { category: { id: categoryId } } : {}),
+      provider: creator,
+      status,
+    });
     return this.serviceRepository.save(service as any) as unknown as ServiceEntity;
   }
 
-  async update(id: string, updateServiceDto: any): Promise<ServiceEntity | null> {
-    await this.serviceRepository.update(id, updateServiceDto);
+  async update(id: string, updateServiceDto: any, requestingUser?: User): Promise<ServiceEntity | null> {
+    const existing = await this.serviceRepository.findOne({ where: { id }, relations: ['provider'] });
+    if (!existing) throw new NotFoundException('Service not found');
+    if (requestingUser && requestingUser.role !== Role.ADMIN && existing.provider?.id !== requestingUser.id) {
+      throw new ForbiddenException('You can only edit your own services');
+    }
+    const { categoryId, provider: _p, status: _s, ...rest } = updateServiceDto;
+    const patch: any = { ...rest };
+    if (categoryId !== undefined) {
+      patch.category = categoryId ? { id: categoryId } : null;
+    }
+    await this.serviceRepository.save({ id, ...patch });
     return this.findOne(id);
   }
 

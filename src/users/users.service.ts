@@ -1,8 +1,26 @@
-import { Injectable, Logger, OnModuleInit, UnauthorizedException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, UnauthorizedException, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { User, Role } from './entities/user.entity';
+import { Repository, DataSource } from 'typeorm';
+import { User, Role, ProviderStatus } from './entities/user.entity';
 import * as bcrypt from 'bcrypt';
+
+/** Capitalize the first letter of each word in a name */
+export function capitalizeName(name?: string | null): string | undefined {
+  if (!name) return name ?? undefined;
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+/** Phone numbers must be exactly 11 digits, no letters or symbols. Throws on invalid. */
+export function validatePhone(phone?: string | null): void {
+  if (phone === undefined || phone === null || phone === '') return;
+  if (!/^\d{11}$/.test(String(phone).trim())) {
+    throw new BadRequestException('Phone number must be exactly 11 digits (numbers only).');
+  }
+}
 
 @Injectable()
 export class UsersService implements OnModuleInit {
@@ -11,6 +29,7 @@ export class UsersService implements OnModuleInit {
   constructor(
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    private readonly dataSource: DataSource,
   ) {}
 
   async onModuleInit() {
@@ -44,14 +63,14 @@ export class UsersService implements OnModuleInit {
 
   async findAll(): Promise<User[]> {
     return this.usersRepository.find({
-      select: ['id', 'email', 'name', 'role', 'phoneNumber', 'city', 'avatarUrl', 'createdAt'],
+      select: ['id', 'email', 'name', 'role', 'phoneNumber', 'city', 'avatarUrl', 'providerStatus', 'createdAt'],
     });
   }
 
   async findOne(id: string): Promise<User | null> {
     return this.usersRepository.findOne({
       where: { id },
-      select: ['id', 'email', 'name', 'role', 'phoneNumber', 'city', 'address', 'avatarUrl', 'createdAt', 'updatedAt'],
+      select: ['id', 'email', 'name', 'role', 'phoneNumber', 'city', 'address', 'avatarUrl', 'providerStatus', 'availability', 'category', 'serviceArea', 'bio', 'experienceYears', 'createdAt', 'updatedAt'],
     });
   }
 
@@ -65,10 +84,41 @@ export class UsersService implements OnModuleInit {
   }
 
   async update(id: string, data: Partial<User>): Promise<User | null> {
-    // Never allow passwordHash or role to be changed via this method
-    const { passwordHash: _pw, role: _role, ...safe } = data as any;
+    // Never allow passwordHash, role, or providerStatus to be changed via this method
+    const { passwordHash: _pw, role: _role, providerStatus: _ps, ...safe } = data as any;
+    if (safe.name) safe.name = capitalizeName(safe.name);
+    if (safe.phoneNumber !== undefined) validatePhone(safe.phoneNumber);
     await this.usersRepository.update(id, safe);
     return this.findOne(id);
+  }
+
+  async setProviderStatus(id: string, status: ProviderStatus): Promise<User | null> {
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.role !== Role.PROVIDER) {
+      throw new ForbiddenException('Only provider accounts have an approval status');
+    }
+    await this.usersRepository.update(id, { providerStatus: status });
+    return this.findOne(id);
+  }
+
+  async remove(id: string): Promise<void> {
+    const user = await this.usersRepository.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    if (user.role === Role.ADMIN) {
+      throw new ForbiddenException('Admin accounts cannot be deleted');
+    }
+    // Clean up records that reference this user before deleting it
+    await this.dataSource.transaction(async (manager) => {
+      await manager.query(`DELETE FROM "booking" WHERE "customerId" = $1`, [id]);
+      await manager.query(
+        `DELETE FROM "booking" WHERE "serviceId" IN (SELECT "id" FROM "service_entity" WHERE "providerId" = $1)`,
+        [id],
+      );
+      await manager.query(`UPDATE "booking" SET "providerId" = NULL WHERE "providerId" = $1`, [id]);
+      await manager.query(`DELETE FROM "service_entity" WHERE "providerId" = $1`, [id]);
+      await manager.query(`DELETE FROM "user" WHERE "id" = $1`, [id]);
+    });
   }
 
   async changePassword(id: string, currentPassword: string, newPassword: string): Promise<void> {
